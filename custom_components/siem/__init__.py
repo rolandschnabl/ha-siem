@@ -45,33 +45,68 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_setup_dashboard(hass: HomeAssistant) -> None:
-    """Set up the SIEM dashboard."""
+    """Set up the SIEM dashboard by creating it in Lovelace storage."""
     try:
+        import json
+        from homeassistant.components.lovelace.const import MODE_STORAGE
+        
         dashboard_config = get_dashboard_config()
-        dashboard_path = hass.config.path("siem_dashboard.yaml")
         
-        # Write dashboard YAML file
-        def write_dashboard():
-            with open(dashboard_path, 'w') as f:
-                yaml.dump(dashboard_config, f, default_flow_style=False, allow_unicode=True)
+        # Path to lovelace dashboards storage
+        lovelace_path = hass.config.path(".storage", "lovelace.lovelace_dashboards")
         
-        await hass.async_add_executor_job(write_dashboard)
+        def create_dashboard():
+            # Read existing dashboards
+            dashboards = {"data": {"items": []}, "key": "lovelace.lovelace_dashboards", "version": 1}
+            try:
+                with open(lovelace_path, 'r') as f:
+                    dashboards = json.load(f)
+            except FileNotFoundError:
+                pass
+            
+            # Check if SIEM dashboard already exists
+            siem_dashboard_exists = any(
+                item.get("url_path") == "siem-security" 
+                for item in dashboards.get("data", {}).get("items", [])
+            )
+            
+            if not siem_dashboard_exists:
+                # Add SIEM dashboard
+                dashboards.setdefault("data", {}).setdefault("items", []).append({
+                    "icon": "mdi:shield-check",
+                    "id": "siem_security",
+                    "mode": MODE_STORAGE,
+                    "require_admin": True,
+                    "show_in_sidebar": True,
+                    "title": "SIEM Security",
+                    "url_path": "siem-security",
+                })
+                
+                # Save dashboards list
+                with open(lovelace_path, 'w') as f:
+                    json.dump(dashboards, f, indent=2)
+            
+            # Create dashboard content file
+            dashboard_content_path = hass.config.path(".storage", "lovelace.siem_security")
+            with open(dashboard_content_path, 'w') as f:
+                json.dump({
+                    "data": {
+                        "config": dashboard_config
+                    },
+                    "key": "lovelace.siem_security",
+                    "version": 1
+                }, f, indent=2)
+        
+        await hass.async_add_executor_job(create_dashboard)
         
         _LOGGER.info(
-            "SIEM dashboard YAML created at: %s\n"
-            "To use it:\n"
-            "1. Go to Settings -> Dashboards\n"
-            "2. Click 'Add Dashboard'\n"
-            "3. Choose 'New dashboard from scratch'\n"
-            "4. Go to Edit mode (pencil icon)\n"
-            "5. Click three dots -> Raw configuration editor\n"
-            "6. Copy content from %s",
-            dashboard_path,
-            dashboard_path
+            "SIEM dashboard automatically created!\n"
+            "Access it at: /lovelace-siem-security or via sidebar 'SIEM Security'\n"
+            "Restart Home Assistant or reload Lovelace to see the dashboard"
         )
         
     except Exception as err:
-        _LOGGER.warning("Failed to create SIEM dashboard file: %s", err)
+        _LOGGER.warning("Failed to auto-create SIEM dashboard: %s", err)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
