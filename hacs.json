@@ -1,0 +1,8 @@
+{
+  "name": "SIEM Server",
+  "version": "1.0.0",
+  "description": "A simple Security Information and Event Management (SIEM) server for Home Assistant that monitors and logs security-relevant events.",
+  "repository": "https://github.com/yourusername/ha-siem",
+  "keywords": ["siem", "security", "monitoring", "events", "logs"],
+  "homeassistant": "2023.1.0"
+}

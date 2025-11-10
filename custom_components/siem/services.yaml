@@ -1,0 +1,44 @@
+query_events:
+  name: Query Events
+  description: Query SIEM events with optional filters
+  fields:
+    event_type:
+      name: Event Type
+      description: Filter by event type (auth_failure, state_change, service_call, automation_trigger, script_run)
+      example: "auth_failure"
+      selector:
+        text:
+    entity_id:
+      name: Entity ID
+      description: Filter by entity ID
+      example: "lock.front_door"
+      selector:
+        entity:
+    severity:
+      name: Severity
+      description: Filter by severity level (low, medium, high, critical)
+      example: "high"
+      selector:
+        select:
+          options:
+            - low
+            - medium
+            - high
+            - critical
+    limit:
+      name: Limit
+      description: Maximum number of events to return
+      default: 100
+      example: 50
+      selector:
+        number:
+          min: 1
+          max: 1000
+
+clear_events:
+  name: Clear Events
+  description: Clear all stored SIEM events and reset statistics
+
+get_stats:
+  name: Get Statistics
+  description: Get current SIEM statistics and event counts

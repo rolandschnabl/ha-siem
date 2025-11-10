@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure SIEM Server",
+        "description": "Set up the SIEM Server to monitor security events in your Home Assistant instance and external devices.",
+        "data": {
+          "max_events": "Maximum Events",
+          "retention_days": "Retention Days",
+          "enable_syslog": "Enable Syslog Server",
+          "syslog_port": "Syslog Port",
+          "syslog_host": "Syslog Host"
+        }
+      }
+    },
+    "error": {
+      "min_events": "Maximum events must be at least 100",
+      "max_events": "Maximum events cannot exceed 100,000",
+      "min_retention": "Retention must be at least 1 day",
+      "max_retention": "Retention cannot exceed 365 days",
+      "invalid_range": "Value is outside the valid range",
+      "invalid_port": "Port must be between 1024 and 65535"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SIEM Server Options",
+        "description": "Update SIEM Server configuration",
+        "data": {
+          "max_events": "Maximum Events",
+          "retention_days": "Retention Days",
+          "enable_syslog": "Enable Syslog Server",
+          "syslog_port": "Syslog Port",
+          "syslog_host": "Syslog Host"
+        }
+      }
+    }
+  }
+}
