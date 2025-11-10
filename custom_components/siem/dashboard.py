@@ -2,12 +2,13 @@
 from typing import Any, Dict
 
 SIEM_DASHBOARD_CONFIG = {
-    "title": "SIEM Security",
-    "icon": "mdi:shield-check",
-    "path": "siem",
-    "show_in_sidebar": True,
-    "require_admin": True,
-    "cards": [
+    "views": [
+        {
+            "title": "SIEM Security",
+            "icon": "mdi:shield-check",
+            "path": "siem",
+            "badges": [],
+            "cards": [
         {
             "type": "vertical-stack",
             "cards": [
@@ -172,6 +173,8 @@ SIEM_DASHBOARD_CONFIG = {
                 },
             ],
         },
+            ],
+        }
     ],
 }
 
