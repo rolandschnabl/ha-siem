@@ -6,6 +6,7 @@ from homeassistant.const import Platform
 
 from .const import DOMAIN
 from .siem_server import SiemServer
+from .api import SiemLogViewerView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +29,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Initialize the SIEM server
     await siem_server.async_initialize()
+    
+    # Register API endpoint
+    hass.http.register_view(SiemLogViewerView(hass))
     
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

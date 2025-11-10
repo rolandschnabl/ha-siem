@@ -1,6 +1,7 @@
 query_events:
   name: Query Events
   description: Query SIEM events with optional filters
+  response: optional
   fields:
     event_type:
       name: Event Type
@@ -42,3 +43,4 @@ clear_events:
 get_stats:
   name: Get Statistics
   description: Get current SIEM statistics and event counts
+  response: optional

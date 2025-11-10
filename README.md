@@ -91,11 +91,50 @@ After installation, the following sensors will be available:
 - `sensor.siem_vpn_connections`: Count of VPN connection events
 - `sensor.siem_wifi_clients`: Count of WiFi client events
 
+### Log Viewer & Dashboard
+
+The SIEM server provides multiple ways to view and analyze events:
+
+#### 1. REST API Endpoint
+
+Query events via HTTP API:
+```
+GET /api/siem/events?limit=100&severity=high&event_type=firewall_block
+```
+
+Parameters:
+- `limit`: Maximum number of events (default: 100)
+- `event_type`: Filter by event type
+- `entity_id`: Filter by entity ID
+- `severity`: Filter by severity (low, medium, high, critical)
+
+#### 2. Dashboard Examples
+
+See [DASHBOARD_EXAMPLES.md](DASHBOARD_EXAMPLES.md) for complete dashboard configurations including:
+- Event statistics cards
+- History graphs
+- Conditional alerts
+- Auto-refresh views
+- Mobile-friendly layouts
+
+#### 3. Quick Dashboard Example
+
+```yaml
+type: entities
+title: SIEM Security Monitor
+entities:
+  - sensor.siem_critical_events
+  - sensor.siem_high_events
+  - sensor.siem_firewall_blocks
+  - sensor.siem_ips_alerts
+  - sensor.siem_auth_failures
+```
+
 ### Services
 
 #### Query Events
 
-Query events with optional filters:
+Query events with optional filters and get results:
 
 ```yaml
 service: siem.query_events

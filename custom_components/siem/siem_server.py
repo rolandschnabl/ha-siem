@@ -490,6 +490,12 @@ class SiemServer:
             f"{DOMAIN}_query_result",
             {"events": filtered_events, "count": len(filtered_events)},
         )
+        
+        # Return data for service response
+        return {
+            "events": filtered_events,
+            "count": len(filtered_events)
+        }
 
     async def _handle_clear_events(self, call: ServiceCall):
         """Handle clear events service."""
@@ -507,6 +513,9 @@ class SiemServer:
             f"{DOMAIN}_stats_result",
             stats_data,
         )
+        
+        # Return data for service response
+        return stats_data
 
     def get_stats(self) -> Dict[str, Any]:
         """Get current statistics."""
