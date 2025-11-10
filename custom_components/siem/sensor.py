@@ -46,6 +46,7 @@ async def async_setup_entry(
     # Create sensors
     sensors = [
         SiemTotalEventsSensor(coordinator, siem_server),
+        SiemRecentEventsSensor(coordinator, siem_server),  # NEU: Letzte Events
         SiemAuthFailuresSensor(coordinator, siem_server),
         SiemStateChangesSensor(coordinator, siem_server),
         SiemServiceCallsSensor(coordinator, siem_server),
@@ -288,3 +289,35 @@ class SiemWiFiClientsSensor(SiemSensorBase):
         """Return the state of the sensor."""
         stats = self.coordinator.data.get("event_types", {})
         return stats.get("wifi_client", 0)
+
+
+class SiemRecentEventsSensor(SiemSensorBase):
+    """Sensor showing recent SIEM events."""
+
+    def __init__(self, coordinator, siem_server):
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator, siem_server, "SIEM Recent Events", "mdi:format-list-bulleted"
+        )
+
+    @property
+    def native_value(self):
+        """Return the count of recent events."""
+        return min(len(self._siem_server.events), 20)
+
+    @property
+    def extra_state_attributes(self):
+        """Return the last 20 events as attributes."""
+        events = list(reversed(self._siem_server.events))[:20]
+        return {
+            "events": [
+                {
+                    "time": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "type": event.event_type,
+                    "severity": event.severity,
+                    "message": event.message,
+                    "entity": event.entity_id or "-",
+                }
+                for event in events
+            ]
+        }

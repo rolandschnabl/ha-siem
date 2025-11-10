@@ -8,6 +8,7 @@ from .const import (
     EVENT_TYPE_FIREWALL_BLOCK,
     EVENT_TYPE_FIREWALL_ALLOW,
     EVENT_TYPE_IPS_ALERT,
+    EVENT_TYPE_ATP_ALERT,
     EVENT_TYPE_VPN_CONNECTION,
     EVENT_TYPE_WIFI_CLIENT,
     EVENT_TYPE_NETWORK_AUTH,
@@ -119,10 +120,20 @@ class SophosXGSParser:
         
         elif log_type == 'ips':
             threat = data.get('threat') or data.get('signature', 'Unknown threat')
+            subtype = data.get('subtype', 'IPS')
+            
+            # Unterscheide zwischen IPS und ATP
+            if subtype == 'ATP':
+                event_type = EVENT_TYPE_ATP_ALERT
+                msg_prefix = "Sophos ATP Alert"
+            else:
+                event_type = EVENT_TYPE_IPS_ALERT
+                msg_prefix = f"Sophos {subtype} Alert"
+            
             return {
-                "event_type": EVENT_TYPE_IPS_ALERT,
+                "event_type": event_type,
                 "severity": SEVERITY_HIGH,
-                "message": f"Sophos IPS Alert: {threat} from {data.get('src_ip', 'unknown')}",
+                "message": f"{msg_prefix}: {threat} from {data.get('src_ip', 'unknown')}",
                 "device_type": "sophos_xgs",
                 "hostname": hostname,
                 "source_ip": source_ip,

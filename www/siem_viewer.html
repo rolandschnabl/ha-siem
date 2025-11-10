@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SIEM Event Viewer</title>
+    <meta charset="utf-8">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d0d0d; color: #fff; }
+        .header { background: #1a1a1a; padding: 20px; border-bottom: 2px solid #03a9f4; }
+        h1 { color: #03a9f4; font-size: 24px; }
+        .controls { background: #1a1a1a; padding: 15px; display: flex; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid #333; }
+        .controls input, .controls select { padding: 8px 12px; background: #2d2d2d; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 14px; }
+        .controls button { padding: 8px 16px; background: #03a9f4; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+        .controls button:hover { background: #0288d1; }
+        .controls button.danger { background: #f44336; }
+        .controls button.danger:hover { background: #d32f2f; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; padding: 20px; background: #151515; }
+        .stat { background: #1e1e1e; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #03a9f4; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #03a9f4; }
+        .stat-label { font-size: 13px; color: #999; margin-top: 5px; }
+        .table-container { padding: 20px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: #1a1a1a; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #2d2d2d; }
+        th { background: #252525; font-weight: 600; position: sticky; top: 0; z-index: 10; }
+        tr:hover { background: #252525; }
+        .severity-critical { color: #f44336; font-weight: bold; }
+        .severity-high { color: #ff9800; font-weight: bold; }
+        .severity-medium { color: #ffeb3b; }
+        .severity-low { color: #4caf50; }
+        .time { color: #999; font-size: 13px; }
+        .entity { font-family: 'Courier New', monospace; font-size: 12px; color: #64b5f6; }
+        .message { font-size: 14px; }
+        .data-detail { 
+            font-size: 11px; 
+            color: #888; 
+            margin-top: 8px; 
+            padding: 8px; 
+            background: #1a1a1a; 
+            border-left: 3px solid #444;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .data-detail .key { color: #64b5f6; }
+        .data-detail .value { color: #a5d6a7; }
+        .data-detail .row { padding: 2px 0; }
+        .no-events { text-align: center; padding: 60px; color: #666; font-size: 18px; }
+        .loading { text-align: center; padding: 60px; color: #03a9f4; font-size: 18px; }
+        .pagination { display: flex; justify-content: center; gap: 10px; padding: 20px; }
+        .pagination button { padding: 8px 16px; background: #2d2d2d; color: #fff; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+        .pagination button:hover { background: #3d3d3d; }
+        .pagination button.active { background: #03a9f4; border-color: #03a9f4; }
+        .export { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ SIEM Event Viewer - Complete Log Analysis</h1>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="searchText" placeholder="🔍 Suche in Message/Entity...">
+        <select id="severityFilter">
+            <option value="">Alle Severities</option>
+            <option value="critical">🔴 Critical</option>
+            <option value="high">🟠 High</option>
+            <option value="medium">🟡 Medium</option>
+            <option value="low">🟢 Low</option>
+        </select>
+        <select id="typeFilter">
+            <option value="">Alle Event-Typen</option>
+            <option value="auth_failure">🔐 Auth Failure</option>
+            <option value="state_change">🔄 State Change</option>
+            <option value="service_call">⚙️ Service Call</option>
+            <option value="firewall_block">🚫 Firewall Block</option>
+            <option value="firewall_allow">✅ Firewall Allow</option>
+            <option value="ips_alert">⚠️ IPS Alert</option>
+            <option value="atp_alert">🛡️ ATP Alert</option>
+            <option value="vpn_connection">🔒 VPN Connection</option>
+            <option value="wifi_client">📡 WiFi Client</option>
+            <option value="network_auth">🔑 Network Auth</option>
+            <option value="sophos_generic">📝 Sophos Generic</option>
+        </select>
+        <select id="deviceFilter">
+            <option value="">Alle Geräte</option>
+        </select>
+        <select id="userFilter">
+            <option value="">Alle Benutzer</option>
+        </select>
+        <select id="logTypeFilter">
+            <option value="">Alle Log-Typen</option>
+        </select>
+        <select id="protocolFilter">
+            <option value="">Alle Protokolle</option>
+        </select>
+        <select id="countryFilter">
+            <option value="">Alle Länder</option>
+        </select>
+        <select id="sourceFilter">
+            <option value="">Alle Quellen</option>
+        </select>
+        <input type="number" id="limitInput" value="1000" min="10" max="100000" placeholder="Limit">
+        <button onclick="loadEvents()">🔄 Neu laden</button>
+        <button onclick="exportCSV()">📥 CSV Export</button>
+        <button onclick="exportJSON()">📥 JSON Export</button>
+        <button class="danger" onclick="clearAll()">🗑️ Alle löschen</button>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="table-container">
+        <div id="eventTable" class="loading">Lade Events...</div>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+
+    <script>
+        let allEvents = [];
+        let filteredEvents = [];
+        let currentPage = 1;
+        const eventsPerPage = 50;
+
+        function parseRawMessage(rawMsg) {
+            const result = {};
+            
+            // Parse key="value" or key=value format (Sophos/UniFi style)
+            const regex = /(\w+)=("([^"]*)"|(\S+))/g;
+            let match;
+            
+            while ((match = regex.exec(rawMsg)) !== null) {
+                const key = match[1];
+                const value = match[3] || match[4]; // quoted or unquoted value
+                result[key] = value;
+            }
+            
+            return result;
+        }
+
+        async function loadStorageFile() {
+            try {
+                // Cache-Busting: Füge Timestamp hinzu
+                const timestamp = new Date().getTime();
+                const response = await fetch(`/local/siem_events.json?t=${timestamp}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const text = await response.text();
+                console.log('Loaded JSON length:', text.length);
+                
+                const data = JSON.parse(text);
+                console.log('Parsed events:', data.events?.length);
+                
+                return data.events || [];
+            } catch (e) {
+                console.error('Error loading events:', e);
+                throw e;
+            }
+        }
+
+        async function loadEvents() {
+            document.getElementById('eventTable').innerHTML = '<div class="loading">Lade ALLE Events...</div>';
+            
+            try {
+                // Lade Events aus Storage-Datei
+                allEvents = await loadStorageFile();
+                
+                if (allEvents.length === 0) {
+                    document.getElementById('eventTable').innerHTML = 
+                        '<div class="no-events">⚠️ Keine Events gefunden.<br><br>Events werden in /config/.storage/siem_events.json gespeichert.</div>';
+                    return;
+                }
+
+                populateDeviceFilter();
+                applyFilters();
+                displayStats();
+            } catch (error) {
+                document.getElementById('eventTable').innerHTML = 
+                    `<div class="no-events">❌ Fehler beim Laden: ${error.message}<br><br>
+                    Prüfe: /config/www/siem_events.json<br>
+                    Console (F12) öffnen für Details!</div>`;
+            }
+        }
+
+        function populateDeviceFilter() {
+            // Sammle alle einzigartigen Werte
+            const devices = new Set();
+            const users = new Set();
+            const logTypes = new Set();
+            const protocols = new Set();
+            const countries = new Set();
+            const sources = new Set();
+            
+            allEvents.forEach(event => {
+                // Event Source bestimmen
+                if (event.data && event.data.device_type) {
+                    // External devices (Sophos, UniFi, etc.)
+                    sources.add(event.data.device_type);
+                } else if (event.entity_id || event.entity) {
+                    // Home Assistant entities
+                    sources.add('home_assistant');
+                } else {
+                    // Fallback basierend auf event_type
+                    const eventType = event.type || event.event_type || '';
+                    if (eventType.includes('sophos')) sources.add('sophos_xgs');
+                    else if (eventType.includes('unifi') || eventType.includes('wifi')) sources.add('unifi');
+                    else if (eventType.includes('firewall')) sources.add('firewall');
+                    else if (eventType.includes('vpn')) sources.add('vpn');
+                    else sources.add('other');
+                }
+                
+                if (event.data && event.data.raw_message) {
+                    const parsed = parseRawMessage(event.data.raw_message);
+                    
+                    // IPs
+                    if (parsed.src_ip) devices.add(parsed.src_ip);
+                    if (parsed.dst_ip) devices.add(parsed.dst_ip);
+                    
+                    // Device Model (Sophos)
+                    if (parsed.device_model) devices.add(parsed.device_model);
+                    
+                    // User Names
+                    if (parsed.user_name) users.add(parsed.user_name);
+                    
+                    // Log Types
+                    if (parsed.log_type) logTypes.add(parsed.log_type);
+                    if (parsed.log_subtype) logTypes.add(`${parsed.log_type} - ${parsed.log_subtype}`);
+                    
+                    // Protocols
+                    if (parsed.protocol) protocols.add(parsed.protocol);
+                    
+                    // Countries
+                    if (parsed.src_country && parsed.src_country !== 'R1') {
+                        countries.add(`${parsed.src_country} (src)`);
+                    }
+                    if (parsed.dst_country && parsed.dst_country !== 'R1') {
+                        countries.add(`${parsed.dst_country} (dst)`);
+                    }
+                }
+                
+                // Weitere Datenquellen
+                if (event.data) {
+                    if (event.data.source_ip) devices.add(event.data.source_ip);
+                    if (event.data.hostname) devices.add(event.data.hostname);
+                }
+                
+                // Entity IDs
+                if (event.entity || event.entity_id) {
+                    devices.add(event.entity || event.entity_id);
+                }
+            });
+
+            // Fülle alle Dropdowns
+            populateDropdown('deviceFilter', devices, 'Alle Geräte/IPs');
+            populateDropdown('userFilter', users, 'Alle Benutzer');
+            populateDropdown('logTypeFilter', logTypes, 'Alle Log-Typen');
+            populateDropdown('protocolFilter', protocols, 'Alle Protokolle');
+            populateDropdown('countryFilter', countries, 'Alle Länder');
+            populateDropdown('sourceFilter', sources, 'Alle Quellen');
+        }
+
+        function populateDropdown(elementId, values, defaultText) {
+            const dropdown = document.getElementById(elementId);
+            dropdown.innerHTML = `<option value="">${defaultText}</option>`;
+            
+            Array.from(values).sort().forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                dropdown.appendChild(option);
+            });
+        }
+
+        function applyFilters() {
+            const searchText = document.getElementById('searchText').value.toLowerCase();
+            const severity = document.getElementById('severityFilter').value;
+            const type = document.getElementById('typeFilter').value;
+            const device = document.getElementById('deviceFilter').value;
+            const user = document.getElementById('userFilter').value;
+            const logType = document.getElementById('logTypeFilter').value;
+            const protocol = document.getElementById('protocolFilter').value;
+            const country = document.getElementById('countryFilter').value;
+            const source = document.getElementById('sourceFilter').value;
+            const limit = parseInt(document.getElementById('limitInput').value) || 1000;
+
+            filteredEvents = allEvents.filter(event => {
+                // Severity Filter
+                if (severity && event.severity !== severity) return false;
+                
+                // Event Type Filter
+                if (type && event.event_type !== type) return false;
+                
+                // Source Filter
+                if (source) {
+                    let sourceMatch = false;
+                    
+                    if (event.data && event.data.device_type === source) {
+                        sourceMatch = true;
+                    } else if (source === 'home_assistant' && (event.entity_id || event.entity)) {
+                        sourceMatch = true;
+                    } else {
+                        const eventType = event.type || event.event_type || '';
+                        if (source === 'sophos_xgs' && eventType.includes('sophos')) sourceMatch = true;
+                        if (source === 'unifi' && (eventType.includes('unifi') || eventType.includes('wifi'))) sourceMatch = true;
+                        if (source === 'firewall' && eventType.includes('firewall')) sourceMatch = true;
+                        if (source === 'vpn' && eventType.includes('vpn')) sourceMatch = true;
+                    }
+                    
+                    if (!sourceMatch) return false;
+                }
+                
+                // Parse raw_message once for all filters
+                let parsed = null;
+                if (event.data && event.data.raw_message) {
+                    parsed = parseRawMessage(event.data.raw_message);
+                }
+                
+                // Device/IP Filter
+                if (device) {
+                    let deviceMatch = false;
+                    
+                    if ((event.entity || event.entity_id || '').includes(device)) deviceMatch = true;
+                    if (event.data && JSON.stringify(event.data).includes(device)) deviceMatch = true;
+                    if (parsed && (parsed.src_ip === device || parsed.dst_ip === device || parsed.device_model === device)) deviceMatch = true;
+                    
+                    if (!deviceMatch) return false;
+                }
+                
+                // User Filter
+                if (user) {
+                    let userMatch = false;
+                    if (parsed && parsed.user_name === user) userMatch = true;
+                    if (!userMatch) return false;
+                }
+                
+                // Log Type Filter
+                if (logType) {
+                    let logTypeMatch = false;
+                    if (parsed) {
+                        if (parsed.log_type === logType) logTypeMatch = true;
+                        if (`${parsed.log_type} - ${parsed.log_subtype}` === logType) logTypeMatch = true;
+                    }
+                    if (!logTypeMatch) return false;
+                }
+                
+                // Protocol Filter
+                if (protocol) {
+                    let protocolMatch = false;
+                    if (parsed && parsed.protocol === protocol) protocolMatch = true;
+                    if (!protocolMatch) return false;
+                }
+                
+                // Country Filter
+                if (country) {
+                    let countryMatch = false;
+                    if (parsed) {
+                        const countryName = country.replace(' (src)', '').replace(' (dst)', '');
+                        if (country.includes('(src)') && parsed.src_country === countryName) countryMatch = true;
+                        if (country.includes('(dst)') && parsed.dst_country === countryName) countryMatch = true;
+                    }
+                    if (!countryMatch) return false;
+                }
+                
+                // Text Search
+                if (searchText) {
+                    const matchMessage = event.message.toLowerCase().includes(searchText);
+                    const matchEntity = (event.entity || '').toLowerCase().includes(searchText);
+                    const matchData = JSON.stringify(event.data || {}).toLowerCase().includes(searchText);
+                    if (!matchMessage && !matchEntity && !matchData) return false;
+                }
+                
+                return true;
+            });
+
+            filteredEvents = filteredEvents.slice(0, limit);
+            currentPage = 1;
+            displayEvents();
+            displayPagination();
+        }
+
+        function displayEvents() {
+            const start = (currentPage - 1) * eventsPerPage;
+            const end = start + eventsPerPage;
+            const pageEvents = filteredEvents.slice(start, end);
+
+            if (pageEvents.length === 0) {
+                document.getElementById('eventTable').innerHTML = 
+                    '<div class="no-events">Keine Events entsprechen den Filterkriterien.</div>';
+                return;
+            }
+
+            const table = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 180px">⏰ Zeit</th>
+                            <th style="width: 100px">🚨 Severity</th>
+                            <th style="width: 150px">📋 Typ</th>
+                            <th>💬 Nachricht</th>
+                            <th style="width: 200px">🎯 Entity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pageEvents.map(event => {
+                            // Format data details nicely
+                            let dataHtml = '';
+                            if (event.data) {
+                                // Parse raw_message if it exists
+                                if (event.data.raw_message) {
+                                    const parsed = parseRawMessage(event.data.raw_message);
+                                    dataHtml = '<div class="data-detail">';
+                                    
+                                    // Highlight important fields first (URLs, Domains, Categories)
+                                    const priorityFields = ['url', 'domain', 'hostname', 'category', 'user_name', 'src_ip', 'dst_ip'];
+                                    const displayedKeys = new Set();
+                                    
+                                    // Show priority fields first with highlighting
+                                    for (const key of priorityFields) {
+                                        if (parsed[key]) {
+                                            let displayValue = parsed[key];
+                                            let style = '';
+                                            
+                                            // Make URLs clickable and highlighted
+                                            if (key === 'url' || key === 'domain' || key === 'hostname') {
+                                                style = 'style="color: #64b5f6; font-weight: bold; font-size: 13px;"';
+                                                if (key === 'url' && (displayValue.startsWith('http://') || displayValue.startsWith('https://'))) {
+                                                    displayValue = `<a href="${displayValue}" target="_blank" style="color: #64b5f6; text-decoration: underline;">${displayValue}</a>`;
+                                                }
+                                            } else if (key === 'category') {
+                                                style = 'style="color: #ff9800; font-weight: bold;"';
+                                            } else if (key === 'user_name') {
+                                                style = 'style="color: #a5d6a7; font-weight: bold;"';
+                                            }
+                                            
+                                            dataHtml += `<div class="row"><span class="key">${key}:</span> <span class="value" ${style}>${displayValue}</span></div>`;
+                                            displayedKeys.add(key);
+                                        }
+                                    }
+                                    
+                                    // Add separator if priority fields were shown
+                                    if (displayedKeys.size > 0) {
+                                        dataHtml += '<div class="row" style="border-top: 1px solid #333; margin: 4px 0;"></div>';
+                                    }
+                                    
+                                    // Show remaining fields
+                                    for (const [key, value] of Object.entries(parsed)) {
+                                        if (!displayedKeys.has(key)) {
+                                            dataHtml += `<div class="row"><span class="key">${key}:</span> <span class="value">${value}</span></div>`;
+                                        }
+                                    }
+                                    
+                                    // Add device info
+                                    if (event.data.device_type) {
+                                        dataHtml += `<div class="row"><span class="key">device_type:</span> <span class="value">${event.data.device_type}</span></div>`;
+                                    }
+                                    if (event.data.source_ip) {
+                                        dataHtml += `<div class="row"><span class="key">source_ip:</span> <span class="value">${event.data.source_ip}</span></div>`;
+                                    }
+                                    dataHtml += '</div>';
+                                } else {
+                                    // Show other data as formatted JSON
+                                    dataHtml = '<div class="data-detail">';
+                                    for (const [key, value] of Object.entries(event.data)) {
+                                        dataHtml += `<div class="row"><span class="key">${key}:</span> <span class="value">${JSON.stringify(value)}</span></div>`;
+                                    }
+                                    dataHtml += '</div>';
+                                }
+                            }
+                            
+                            return `
+                            <tr>
+                                <td class="time">${event.time || event.timestamp}</td>
+                                <td class="severity-${event.severity}">${event.severity.toUpperCase()}</td>
+                                <td>${event.type || event.event_type}</td>
+                                <td>
+                                    <div class="message">${event.message}</div>
+                                    ${dataHtml}
+                                </td>
+                                <td class="entity">${event.entity || event.entity_id || '-'}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            document.getElementById('eventTable').innerHTML = table;
+        }
+
+        function displayStats() {
+            const stats = {
+                total: allEvents.length,
+                critical: allEvents.filter(e => e.severity === 'critical').length,
+                high: allEvents.filter(e => e.severity === 'high').length,
+                medium: allEvents.filter(e => e.severity === 'medium').length,
+                low: allEvents.filter(e => e.severity === 'low').length,
+                filtered: filteredEvents.length
+            };
+
+            document.getElementById('stats').innerHTML = `
+                <div class="stat">
+                    <div class="stat-value">${stats.total}</div>
+                    <div class="stat-label">Gesamt Events</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" style="color: #f44336">${stats.critical}</div>
+                    <div class="stat-label">Critical</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" style="color: #ff9800">${stats.high}</div>
+                    <div class="stat-label">High</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" style="color: #ffeb3b">${stats.medium}</div>
+                    <div class="stat-label">Medium</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" style="color: #4caf50">${stats.low}</div>
+                    <div class="stat-label">Low</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" style="color: #64b5f6">${stats.filtered}</div>
+                    <div class="stat-label">Gefiltert</div>
+                </div>
+            `;
+        }
+
+        function displayPagination() {
+            const totalPages = Math.ceil(filteredEvents.length / eventsPerPage);
+            if (totalPages <= 1) {
+                document.getElementById('pagination').innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            if (currentPage > 1) {
+                html += `<button onclick="changePage(${currentPage - 1})">← Zurück</button>`;
+            }
+            
+            for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+                html += `<button class="${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+            }
+            
+            if (currentPage < totalPages) {
+                html += `<button onclick="changePage(${currentPage + 1})">Weiter →</button>`;
+            }
+
+            document.getElementById('pagination').innerHTML = html;
+        }
+
+        function changePage(page) {
+            currentPage = page;
+            displayEvents();
+            displayPagination();
+        }
+
+        function exportCSV() {
+            const csv = ['Zeitstempel,Severity,Typ,Nachricht,Entity'].concat(
+                filteredEvents.map(e => 
+                    `"${e.time || e.timestamp}","${e.severity}","${e.type || e.event_type}","${e.message}","${e.entity || e.entity_id || ''}"`
+                )
+            ).join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `siem_events_${new Date().toISOString()}.csv`;
+            a.click();
+        }
+
+        function exportJSON() {
+            const json = JSON.stringify(filteredEvents, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `siem_events_${new Date().toISOString()}.json`;
+            a.click();
+        }
+
+        async function clearAll() {
+            if (!confirm('WIRKLICH ALLE Events löschen? Dies kann nicht rückgängig gemacht werden!')) return;
+            
+            alert('Clear-Funktion: Verwende den Service siem.clear_events in Home Assistant!');
+        }
+
+        // Event Listeners
+        document.getElementById('searchText').addEventListener('input', applyFilters);
+        document.getElementById('severityFilter').addEventListener('change', applyFilters);
+        document.getElementById('typeFilter').addEventListener('change', applyFilters);
+        document.getElementById('deviceFilter').addEventListener('change', applyFilters);
+        document.getElementById('userFilter').addEventListener('change', applyFilters);
+        document.getElementById('logTypeFilter').addEventListener('change', applyFilters);
+        document.getElementById('protocolFilter').addEventListener('change', applyFilters);
+        document.getElementById('countryFilter').addEventListener('change', applyFilters);
+        document.getElementById('sourceFilter').addEventListener('change', applyFilters);
+        document.getElementById('limitInput').addEventListener('change', applyFilters);
+
+        // Initial Load
+        loadEvents();
+
+        // Auto-Refresh alle 30 Sekunden
+        setInterval(loadEvents, 30000);
+    </script>
+</body>
+</html>

@@ -58,6 +58,7 @@ from .const import (
 )
 from .syslog_server import SyslogServer
 from .parsers import parse_external_device
+from .influxdb_handler import SiemInfluxDB
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,13 +104,28 @@ class SiemServer:
         """Initialize SIEM server."""
         self.hass = hass
         self.entry = entry
-        self.events: deque = deque(maxlen=self._get_max_events())
         self.stats = defaultdict(int)
         self._listeners = []
         self._cleanup_task = None
         self._syslog_server: Optional[SyslogServer] = None
         self._storage_path = hass.config.path(".storage", "siem_events.json")
         self._save_task = None
+        
+        # Initialize InfluxDB
+        self.influx: Optional[SiemInfluxDB] = None
+        try:
+            self.influx = SiemInfluxDB()
+            _LOGGER.info("SIEM InfluxDB initialized")
+        except Exception as err:
+            _LOGGER.error("Failed to initialize InfluxDB: %s", err)
+            raise
+    
+    @property
+    def events(self):
+        """Get recent events from InfluxDB (for backwards compatibility)."""
+        if self.influx:
+            return self.influx.query_events(limit=1000)
+        return []
 
     def _get_max_events(self) -> int:
         """Get max events from config."""
@@ -443,8 +459,15 @@ class SiemServer:
         return SEVERITY_LOW
 
     def _add_event(self, event: SiemEvent):
-        """Add event to storage."""
-        self.events.append(event)
+        """Add event to InfluxDB."""
+        # Write to InfluxDB
+        if self.influx:
+            try:
+                self.influx.write_event(event.to_dict())
+            except Exception as err:
+                _LOGGER.error("Failed to write event to InfluxDB: %s", err)
+        
+        # Update stats
         self.stats[event.event_type] += 1
         self.stats[f"severity_{event.severity}"] += 1
         self.stats["total_events"] += 1
@@ -456,28 +479,20 @@ class SiemServer:
             event.message,
         )
 
-        # Schedule async save
-        if self._save_task is None or self._save_task.done():
-            self._save_task = asyncio.create_task(self._save_events_debounced())
-
     async def _cleanup_old_events(self):
-        """Periodically cleanup old events."""
+        """Periodically cleanup old events from InfluxDB."""
         while True:
             try:
                 await asyncio.sleep(3600)  # Run every hour
+                
+                # InfluxDB retention policy handles automatic cleanup
+                # This is just for logging and manual cleanup if needed
                 retention_days = self._get_retention_days()
-                cutoff_time = datetime.now() - timedelta(days=retention_days)
                 
-                # Remove old events
-                original_count = len(self.events)
-                self.events = deque(
-                    [e for e in self.events if e.timestamp > cutoff_time],
-                    maxlen=self._get_max_events(),
-                )
-                removed_count = original_count - len(self.events)
-                
-                if removed_count > 0:
-                    _LOGGER.info("Cleaned up %d old SIEM events", removed_count)
+                if self.influx:
+                    # Optional: manually delete old events
+                    # InfluxDB retention policy already handles this automatically
+                    _LOGGER.debug("InfluxDB retention policy active: %d days", retention_days)
                     
             except asyncio.CancelledError:
                 break
@@ -491,20 +506,21 @@ class SiemServer:
         severity = call.data.get(ATTR_SEVERITY)
         limit = call.data.get("limit", 100)
 
-        # Filter events
+        # Query from InfluxDB
         filtered_events = []
-        for event in reversed(self.events):
-            if event_type and event.event_type != event_type:
-                continue
-            if entity_id and event.entity_id != entity_id:
-                continue
-            if severity and event.severity != severity:
-                continue
-            
-            filtered_events.append(event.to_dict())
-            
-            if len(filtered_events) >= limit:
-                break
+        if self.influx:
+            filtered_events = await self.hass.async_add_executor_job(
+                self.influx.query_events,
+                limit,
+                event_type,
+                severity,
+                None,  # device_type
+                entity_id,
+                None,  # source_ip
+                None,  # user_name
+                None,  # start_time
+                None,  # end_time
+            )
 
         _LOGGER.info("Query returned %d events", len(filtered_events))
         
@@ -522,15 +538,20 @@ class SiemServer:
 
     async def _handle_clear_events(self, call: ServiceCall):
         """Handle clear events service."""
-        count = len(self.events)
-        self.events.clear()
+        if self.influx:
+            await self.hass.async_add_executor_job(
+                self.influx.clear_all_events
+            )
         self.stats.clear()
-        _LOGGER.info("Cleared %d SIEM events", count)
+        _LOGGER.info("Cleared all SIEM events from InfluxDB")
 
     async def _handle_get_stats(self, call: ServiceCall):
         """Handle get stats service."""
-        stats_data = dict(self.stats)
-        stats_data["event_count"] = len(self.events)
+        stats_data = {}
+        if self.influx:
+            stats_data = await self.hass.async_add_executor_job(
+                self.influx.get_statistics
+            )
         
         self.hass.bus.async_fire(
             f"{DOMAIN}_stats_result",
@@ -542,88 +563,63 @@ class SiemServer:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get current statistics."""
+        if self.influx:
+            try:
+                return self.influx.get_statistics()
+            except:
+                pass
+        
         return {
-            "total_events": len(self.events),
+            "total_events": 0,
             "event_types": dict(self.stats),
-            "max_events": self._get_max_events(),
+            "max_events": 0,
             "retention_days": self._get_retention_days(),
         }
 
     async def _load_events(self):
-        """Load events from persistent storage."""
+        """Load statistics from InfluxDB."""
         try:
-            if not os.path.exists(self._storage_path):
-                _LOGGER.info("No persisted SIEM events found")
-                return
+            if self.influx:
+                # Load statistics from InfluxDB
+                stats_data = await self.hass.async_add_executor_job(
+                    self.influx.get_statistics
+                )
+                
+                # Update stats
+                self.stats['total_events'] = stats_data.get('total_events', 0)
+                for severity, count in stats_data.get('by_severity', {}).items():
+                    self.stats[f'severity_{severity}'] = count
+                for event_type, count in stats_data.get('by_type', {}).items():
+                    self.stats[event_type] = count
+                
+                _LOGGER.info("Loaded SIEM statistics from InfluxDB: %d total events", 
+                           self.stats['total_events'])
+        except Exception as err:
+            _LOGGER.error("Failed to load statistics from InfluxDB: %s", err)
 
-            # Read file asynchronously
-            data = await self.hass.async_add_executor_job(
-                self._read_storage_file
-            )
+    async def _export_to_json(self):
+        """Export recent events to JSON for web viewer (optional backup)."""
+        try:
+            if self.influx:
+                # Get recent 1000 events from InfluxDB
+                events = await self.hass.async_add_executor_job(
+                    self.influx.query_events, 1000
+                )
+                
+                data = {
+                    'events': events,
+                    'stats': dict(self.stats),
+                    'saved_at': datetime.now().isoformat(),
+                }
 
-            # Restore events
-            loaded_count = 0
-            for event_data in data.get('events', []):
-                try:
-                    # Recreate SiemEvent from dict
-                    event = SiemEvent(
-                        event_type=event_data['event_type'],
-                        severity=event_data['severity'],
-                        message=event_data['message'],
-                        entity_id=event_data.get('entity_id'),
-                        user_id=event_data.get('user_id'),
-                        data=event_data.get('data', {}),
-                    )
-                    # Restore original timestamp
-                    event.timestamp = datetime.fromisoformat(event_data['timestamp'])
-                    self.events.append(event)
-                    loaded_count += 1
-                except Exception as err:
-                    _LOGGER.warning("Failed to restore event: %s", err)
-
-            # Restore stats
-            self.stats = defaultdict(int, data.get('stats', {}))
-
-            _LOGGER.info("Loaded %d SIEM events from storage", loaded_count)
+                # Write to www directory for web viewer
+                www_path = self.hass.config.path("www", "siem_events.json")
+                os.makedirs(os.path.dirname(www_path), exist_ok=True)
+                
+                with open(www_path, 'w') as f:
+                    json.dump(data, f, indent=2)
+                
+                _LOGGER.debug("Exported %d events to JSON backup", len(events))
 
         except Exception as err:
-            _LOGGER.error("Failed to load SIEM events: %s", err)
-
-    def _read_storage_file(self):
-        """Read data from storage file (runs in executor)."""
-        with open(self._storage_path, 'r') as f:
-            return json.load(f)
-
-    async def _save_events_debounced(self):
-        """Save events with debounce (wait 30 seconds before saving)."""
-        await asyncio.sleep(30)
-        await self._save_events()
-
-    async def _save_events(self):
-        """Save events to persistent storage."""
-        try:
-            # Prepare data for storage
-            data = {
-                'events': [e.to_dict() for e in self.events],
-                'stats': dict(self.stats),
-                'saved_at': datetime.now().isoformat(),
-            }
-
-            # Write asynchronously to avoid blocking the event loop
-            await self.hass.async_add_executor_job(
-                self._write_storage_file, data
-            )
-
-            _LOGGER.debug("Saved %d SIEM events to storage", len(self.events))
-
-        except Exception as err:
-            _LOGGER.error("Failed to save SIEM events: %s", err)
-
-    def _write_storage_file(self, data):
-        """Write data to storage file (runs in executor)."""
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(self._storage_path), exist_ok=True)
-
-        # Write to file
-        with open(self._storage_path, 'w') as f:
-            json.dump(data, f, indent=2)
+            _LOGGER.error("Failed to export events to JSON: %s", err)

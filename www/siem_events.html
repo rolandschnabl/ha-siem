@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SIEM Events</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 20px;
+            background: #111;
+            color: #fff;
+        }
+        h1 {
+            color: #03a9f4;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #1e1e1e;
+            border-radius: 8px;
+        }
+        .controls button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #03a9f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background: #0288d1;
+        }
+        .controls input, .controls select {
+            padding: 8px;
+            margin: 5px;
+            background: #2d2d2d;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e1e1e;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        th {
+            background: #2d2d2d;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+        .severity-critical { color: #f44336; font-weight: bold; }
+        .severity-high { color: #ff9800; font-weight: bold; }
+        .severity-medium { color: #ffeb3b; }
+        .severity-low { color: #4caf50; }
+        .event-details {
+            font-size: 0.9em;
+            color: #999;
+        }
+        #stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #03a9f4;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            color: #999;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🛡️ SIEM Event Viewer</h1>
+    
+    <div id="stats"></div>
+    
+    <div class="controls">
+        <label>Limit: <input type="number" id="limit" value="50" min="10" max="1000"></label>
+        <label>Severity: 
+            <select id="severity">
+                <option value="">All</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+        </label>
+        <label>Event Type: <input type="text" id="eventType" placeholder="e.g., auth_failure"></label>
+        <button onclick="loadEvents()">🔄 Reload</button>
+        <button onclick="loadStats()">📊 Stats</button>
+        <button onclick="clearEvents()">🗑️ Clear All</button>
+    </div>
+    
+    <div id="eventContainer">
+        <p>Loading events...</p>
+    </div>
+
+    <script>
+        const API_BASE = '/api/siem/events';
+        
+        async function loadEvents() {
+            const limit = document.getElementById('limit').value;
+            const severity = document.getElementById('severity').value;
+            const eventType = document.getElementById('eventType').value;
+            
+            let url = `${API_BASE}?limit=${limit}`;
+            if (severity) url += `&severity=${severity}`;
+            if (eventType) url += `&event_type=${eventType}`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                displayEvents(data.events || []);
+            } catch (error) {
+                document.getElementById('eventContainer').innerHTML = 
+                    `<p style="color: #f44336;">Error loading events: ${error.message}</p>`;
+            }
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/services/siem/get_stats', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+                displayStats(data.response || {});
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        async function clearEvents() {
+            if (!confirm('Are you sure you want to clear all SIEM events?')) return;
+            
+            try {
+                await fetch('/api/services/siem/clear_events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                alert('Events cleared!');
+                loadEvents();
+                loadStats();
+            } catch (error) {
+                alert('Error clearing events: ' + error.message);
+            }
+        }
+        
+        function displayStats(stats) {
+            const statsDiv = document.getElementById('stats');
+            statsDiv.innerHTML = Object.entries(stats).map(([key, value]) => `
+                <div class="stat-card">
+                    <div class="stat-value">${value}</div>
+                    <div class="stat-label">${key.replace(/_/g, ' ')}</div>
+                </div>
+            `).join('');
+        }
+        
+        function displayEvents(events) {
+            if (events.length === 0) {
+                document.getElementById('eventContainer').innerHTML = 
+                    '<p>No events found.</p>';
+                return;
+            }
+            
+            const table = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Severity</th>
+                            <th>Type</th>
+                            <th>Message</th>
+                            <th>Entity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${events.map(event => `
+                            <tr>
+                                <td>${new Date(event.timestamp).toLocaleString()}</td>
+                                <td class="severity-${event.severity}">${event.severity.toUpperCase()}</td>
+                                <td>${event.event_type}</td>
+                                <td>
+                                    ${event.message}
+                                    ${event.data ? `<div class="event-details">${JSON.stringify(event.data)}</div>` : ''}
+                                </td>
+                                <td><code>${event.entity_id || '-'}</code></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            document.getElementById('eventContainer').innerHTML = table;
+        }
+        
+        // Load on page load
+        loadEvents();
+        loadStats();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            loadEvents();
+            loadStats();
+        }, 30000);
+    </script>
+</body>
+</html>
