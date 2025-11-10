@@ -1,6 +1,8 @@
 """SIEM Server core logic."""
 import logging
 import asyncio
+import json
+import os
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional
@@ -9,6 +11,7 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant, Event, callback, ServiceCall
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import service
+from homeassistant.util import dt as dt_util
 from homeassistant.const import (
     EVENT_STATE_CHANGED,
     EVENT_CALL_SERVICE,
@@ -105,6 +108,8 @@ class SiemServer:
         self._listeners = []
         self._cleanup_task = None
         self._syslog_server: Optional[SyslogServer] = None
+        self._storage_path = hass.config.path(".storage", "siem_events.json")
+        self._save_task = None
 
     def _get_max_events(self) -> int:
         """Get max events from config."""
@@ -123,6 +128,9 @@ class SiemServer:
     async def async_initialize(self):
         """Initialize the SIEM server."""
         _LOGGER.info("Initializing SIEM Server")
+
+        # Load persisted events
+        await self._load_events()
 
         # Register event listeners
         self._listeners.append(
@@ -160,6 +168,17 @@ class SiemServer:
     async def async_shutdown(self):
         """Shutdown the SIEM server."""
         _LOGGER.info("Shutting down SIEM Server")
+
+        # Save events before shutdown
+        await self._save_events()
+
+        # Cancel save task
+        if self._save_task:
+            self._save_task.cancel()
+            try:
+                await self._save_task
+            except asyncio.CancelledError:
+                pass
 
         # Stop syslog server
         if self._syslog_server:
@@ -437,6 +456,10 @@ class SiemServer:
             event.message,
         )
 
+        # Schedule async save
+        if self._save_task is None or self._save_task.done():
+            self._save_task = asyncio.create_task(self._save_events_debounced())
+
     async def _cleanup_old_events(self):
         """Periodically cleanup old events."""
         while True:
@@ -525,3 +548,68 @@ class SiemServer:
             "max_events": self._get_max_events(),
             "retention_days": self._get_retention_days(),
         }
+
+    async def _load_events(self):
+        """Load events from persistent storage."""
+        try:
+            if not os.path.exists(self._storage_path):
+                _LOGGER.info("No persisted SIEM events found")
+                return
+
+            with open(self._storage_path, 'r') as f:
+                data = json.load(f)
+
+            # Restore events
+            loaded_count = 0
+            for event_data in data.get('events', []):
+                try:
+                    # Recreate SiemEvent from dict
+                    event = SiemEvent(
+                        event_type=event_data['event_type'],
+                        severity=event_data['severity'],
+                        message=event_data['message'],
+                        entity_id=event_data.get('entity_id'),
+                        user_id=event_data.get('user_id'),
+                        data=event_data.get('data', {}),
+                    )
+                    # Restore original timestamp
+                    event.timestamp = datetime.fromisoformat(event_data['timestamp'])
+                    self.events.append(event)
+                    loaded_count += 1
+                except Exception as err:
+                    _LOGGER.warning("Failed to restore event: %s", err)
+
+            # Restore stats
+            self.stats = defaultdict(int, data.get('stats', {}))
+
+            _LOGGER.info("Loaded %d SIEM events from storage", loaded_count)
+
+        except Exception as err:
+            _LOGGER.error("Failed to load SIEM events: %s", err)
+
+    async def _save_events_debounced(self):
+        """Save events with debounce (wait 30 seconds before saving)."""
+        await asyncio.sleep(30)
+        await self._save_events()
+
+    async def _save_events(self):
+        """Save events to persistent storage."""
+        try:
+            # Prepare data for storage
+            data = {
+                'events': [e.to_dict() for e in self.events],
+                'stats': dict(self.stats),
+                'saved_at': datetime.now().isoformat(),
+            }
+
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(self._storage_path), exist_ok=True)
+
+            # Write to file
+            with open(self._storage_path, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            _LOGGER.debug("Saved %d SIEM events to storage", len(self.events))
+
+        except Exception as err:
+            _LOGGER.error("Failed to save SIEM events: %s", err)
