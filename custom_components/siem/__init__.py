@@ -1,10 +1,9 @@
 """The SIEM Server integration."""
 import logging
+import yaml
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.const import Platform
-from homeassistant.components import frontend
-from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
 from .siem_server import SiemServer
@@ -49,17 +48,30 @@ async def _async_setup_dashboard(hass: HomeAssistant) -> None:
     """Set up the SIEM dashboard."""
     try:
         dashboard_config = get_dashboard_config()
+        dashboard_path = hass.config.path("siem_dashboard.yaml")
         
-        # Store dashboard in lovelace config
-        await hass.services.async_call(
-            "lovelace",
-            "reload_resources",
-            blocking=False,
+        # Write dashboard YAML file
+        def write_dashboard():
+            with open(dashboard_path, 'w') as f:
+                yaml.dump(dashboard_config, f, default_flow_style=False, allow_unicode=True)
+        
+        await hass.async_add_executor_job(write_dashboard)
+        
+        _LOGGER.info(
+            "SIEM dashboard YAML created at: %s\n"
+            "To use it:\n"
+            "1. Go to Settings -> Dashboards\n"
+            "2. Click 'Add Dashboard'\n"
+            "3. Choose 'New dashboard from scratch'\n"
+            "4. Go to Edit mode (pencil icon)\n"
+            "5. Click three dots -> Raw configuration editor\n"
+            "6. Copy content from %s",
+            dashboard_path,
+            dashboard_path
         )
         
-        _LOGGER.info("SIEM dashboard registered: /lovelace/siem")
     except Exception as err:
-        _LOGGER.warning("Failed to register SIEM dashboard: %s", err)
+        _LOGGER.warning("Failed to create SIEM dashboard file: %s", err)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

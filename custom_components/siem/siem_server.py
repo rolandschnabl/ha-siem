@@ -556,8 +556,10 @@ class SiemServer:
                 _LOGGER.info("No persisted SIEM events found")
                 return
 
-            with open(self._storage_path, 'r') as f:
-                data = json.load(f)
+            # Read file asynchronously
+            data = await self.hass.async_add_executor_job(
+                self._read_storage_file
+            )
 
             # Restore events
             loaded_count = 0
@@ -587,6 +589,11 @@ class SiemServer:
         except Exception as err:
             _LOGGER.error("Failed to load SIEM events: %s", err)
 
+    def _read_storage_file(self):
+        """Read data from storage file (runs in executor)."""
+        with open(self._storage_path, 'r') as f:
+            return json.load(f)
+
     async def _save_events_debounced(self):
         """Save events with debounce (wait 30 seconds before saving)."""
         await asyncio.sleep(30)
@@ -602,14 +609,21 @@ class SiemServer:
                 'saved_at': datetime.now().isoformat(),
             }
 
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(self._storage_path), exist_ok=True)
-
-            # Write to file
-            with open(self._storage_path, 'w') as f:
-                json.dump(data, f, indent=2)
+            # Write asynchronously to avoid blocking the event loop
+            await self.hass.async_add_executor_job(
+                self._write_storage_file, data
+            )
 
             _LOGGER.debug("Saved %d SIEM events to storage", len(self.events))
 
         except Exception as err:
             _LOGGER.error("Failed to save SIEM events: %s", err)
+
+    def _write_storage_file(self, data):
+        """Write data to storage file (runs in executor)."""
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self._storage_path), exist_ok=True)
+
+        # Write to file
+        with open(self._storage_path, 'w') as f:
+            json.dump(data, f, indent=2)
