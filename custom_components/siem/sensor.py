@@ -28,11 +28,15 @@ async def async_setup_entry(
     siem_server: SiemServer = hass.data[DOMAIN][entry.entry_id]
 
     # Create coordinator for updating sensor data
+    async def async_update_data():
+        """Fetch data from SIEM server."""
+        return siem_server.get_stats()
+    
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
         name="siem_sensor",
-        update_method=lambda: siem_server.get_stats(),
+        update_method=async_update_data,
         update_interval=SCAN_INTERVAL,
     )
 

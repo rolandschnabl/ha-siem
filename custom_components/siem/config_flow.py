@@ -97,10 +97,6 @@ class SiemConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class SiemOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for SIEM Server."""
 
-    def __init__(self, config_entry):
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         errors = {}
@@ -127,39 +123,39 @@ class SiemOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Optional(
                     CONF_MAX_EVENTS,
-                    default=self.config_entry.options.get(
+                    default=self.options.get(
                         CONF_MAX_EVENTS,
-                        self.config_entry.data.get(CONF_MAX_EVENTS, DEFAULT_MAX_EVENTS),
+                        self.data.get(CONF_MAX_EVENTS, DEFAULT_MAX_EVENTS),
                     ),
                 ): vol.Coerce(int),
                 vol.Optional(
                     CONF_RETENTION_DAYS,
-                    default=self.config_entry.options.get(
+                    default=self.options.get(
                         CONF_RETENTION_DAYS,
-                        self.config_entry.data.get(
+                        self.data.get(
                             CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS
                         ),
                     ),
                 ): vol.Coerce(int),
                 vol.Optional(
                     CONF_ENABLE_SYSLOG,
-                    default=self.config_entry.options.get(
+                    default=self.options.get(
                         CONF_ENABLE_SYSLOG,
-                        self.config_entry.data.get(CONF_ENABLE_SYSLOG, True),
+                        self.data.get(CONF_ENABLE_SYSLOG, True),
                     ),
                 ): bool,
                 vol.Optional(
                     CONF_SYSLOG_PORT,
-                    default=self.config_entry.options.get(
+                    default=self.options.get(
                         CONF_SYSLOG_PORT,
-                        self.config_entry.data.get(CONF_SYSLOG_PORT, DEFAULT_SYSLOG_PORT),
+                        self.data.get(CONF_SYSLOG_PORT, DEFAULT_SYSLOG_PORT),
                     ),
                 ): vol.Coerce(int),
                 vol.Optional(
                     CONF_SYSLOG_HOST,
-                    default=self.config_entry.options.get(
+                    default=self.options.get(
                         CONF_SYSLOG_HOST,
-                        self.config_entry.data.get(CONF_SYSLOG_HOST, DEFAULT_SYSLOG_HOST),
+                        self.data.get(CONF_SYSLOG_HOST, DEFAULT_SYSLOG_HOST),
                     ),
                 ): str,
             }
