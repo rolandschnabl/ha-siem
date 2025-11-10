@@ -9,9 +9,9 @@ SIEM_DASHBOARD_CONFIG = {
             "path": "siem",
             "badges": [],
             "cards": [
-        {
-            "type": "vertical-stack",
-            "cards": [
+                {
+                    "type": "vertical-stack",
+                    "cards": [
                 {
                     "type": "markdown",
                     "title": "🛡️ SIEM Security Center",
@@ -48,11 +48,11 @@ SIEM_DASHBOARD_CONFIG = {
                         },
                     ],
                 },
-            ],
-        },
-        {
-            "type": "horizontal-stack",
-            "cards": [
+                    ],
+                },
+                {
+                    "type": "horizontal-stack",
+                    "cards": [
                 {
                     "type": "entities",
                     "title": "Home Assistant Events",
@@ -93,10 +93,10 @@ SIEM_DASHBOARD_CONFIG = {
                         },
                     ],
                 },
-            ],
-        },
-        {
-            "type": "conditional",
+                    ],
+                },
+                {
+                    "type": "conditional",
             "conditions": [
                 {
                     "entity": "sensor.siem_critical_events",
@@ -107,13 +107,13 @@ SIEM_DASHBOARD_CONFIG = {
                 "type": "entities",
                 "title": "⚠️ CRITICAL SECURITY ALERTS",
                 "state_color": True,
-                "entities": [
-                    "sensor.siem_critical_events",
-                ],
-            },
-        },
-        {
-            "type": "history-graph",
+                    "entities": [
+                        "sensor.siem_critical_events",
+                    ],
+                },
+                },
+                {
+                    "type": "history-graph",
             "title": "Event Trends (24 hours)",
             "hours_to_show": 24,
             "entities": [
@@ -126,14 +126,14 @@ SIEM_DASHBOARD_CONFIG = {
                 {
                     "entity": "sensor.siem_firewall_blocks",
                 },
-                {
-                    "entity": "sensor.siem_ips_alerts",
+                    {
+                        "entity": "sensor.siem_ips_alerts",
+                    },
+                ],
                 },
-            ],
-        },
-        {
-            "type": "entities",
-            "title": "SIEM Actions",
+                {
+                    "type": "entities",
+                    "title": "SIEM Actions",
             "entities": [
                 {
                     "type": "button",
@@ -170,9 +170,9 @@ SIEM_DASHBOARD_CONFIG = {
                             "text": "Are you sure you want to clear all SIEM events?",
                         },
                     },
+                    },
+                ],
                 },
-            ],
-        },
             ],
         }
     ],
